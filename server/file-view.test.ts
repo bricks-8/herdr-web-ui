@@ -188,4 +188,19 @@ describe("locateFile", () => {
     // an absolute or ~ path is taken as written, never searched for
     expect(locateFile("/nowhere/demo.mp4", root)).toBeNull();
   });
+
+  it("finds a tracked file past a folder too large to walk, as a repository with a data set holds", async () => {
+    const { locateFile } = await import("./file-view.ts");
+    const { clearFileCache } = await import("./files.ts");
+    const root = mkdtempSync(join(tmpdir(), "herdr-locate-")); roots.push(root);
+    // the walk visits files before folders and stops at 5,000 entries: these come first
+    mkdirSync(join(root, "a-data"), { recursive: true });
+    for (let i = 0; i < 5_100; i++) writeFileSync(join(root, "a-data", `page-${i}.txt`), "");
+    mkdirSync(join(root, "docs/design"), { recursive: true });
+    writeFileSync(join(root, "docs/design/11_two-version-design.md"), "# design");
+    writeFileSync(join(root, ".gitignore"), "a-data/\n");
+    expect(Bun.spawnSync(["git", "init", "-q", root]).exitCode).toBe(0);
+    clearFileCache();
+    expect(locateFile("11_two-version-design.md", root)).toMatchObject({ info: { path: join(root, "docs/design/11_two-version-design.md") } });
+  });
 });
