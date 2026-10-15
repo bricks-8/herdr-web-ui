@@ -82,17 +82,28 @@ export async function paneFiles(cwd: string, query = "", limit = 20): Promise<st
 }
 
 const walked = new Map<string, { expires: number; files: string[] }>();
+/** a repository's whole file list is read for a name, not just the first MAX_ENTRIES of it */
+const MAX_NAMED_GIT_FILES = 200_000;
+
+/** `gitFiles` for a lookup that answers at once: the repository's tracked and untracked files, or null outside one. */
+function gitFilesNow(cwd: string): string[] | null {
+  const proc = Bun.spawnSync(["git", "-C", cwd, "ls-files", "-z", "-co", "--exclude-standard"], { stdout: "pipe", stderr: "ignore", timeout: 3_000 });
+  if (proc.exitCode !== 0) return null;
+  return proc.stdout.toString().split("\0").filter(Boolean).slice(0, MAX_NAMED_GIT_FILES);
+}
 
 /**
  * The files under `cwd` whose path ends in `name` (a bare `demo.mp4`, or `screenshots/demo.mp4`),
- * for a path an agent wrote without its folders. Walks the folder itself, since the git
- * inventory leaves out ignored files (build output, recordings), within the same bounds.
+ * for a path an agent wrote without its folders. The git inventory comes first: a folder holding
+ * a large data set (thousands of downloaded pages) would use up the walk's bounds before it reached
+ * the docs an agent names. The walk follows, since that inventory leaves out ignored files (build
+ * output, recordings).
  */
 export function filesNamed(cwd: string, name: string, limit = 10): string[] {
   const suffix = name.replace(/^\.\//, "");
   let hit = walked.get(cwd);
   if (!hit || hit.expires <= Date.now()) {
-    hit = { expires: Date.now() + CACHE_MS, files: walkFiles(cwd) };
+    hit = { expires: Date.now() + CACHE_MS, files: [...new Set([...gitFilesNow(cwd) ?? [], ...walkFiles(cwd)])] };
     walked.set(cwd, hit);
     if (walked.size > 16) walked.delete(walked.keys().next().value!);
   }
