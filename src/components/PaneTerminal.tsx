@@ -52,7 +52,7 @@ import { isAppShortcut } from "../lib/shortcuts.ts";
 import { plainPageDirection } from "../lib/pageScroll.ts";
 import { keyboardHoldsGrid, keyboardUp } from "../lib/keyboard.ts";
 import { OpenFileContext } from "../lib/filePaths.ts";
-import { fileUriPath, hyperlinkFilter, isWebLink, terminalFileLinkProvider } from "../lib/terminalFileLinks.ts";
+import { fileUriPath, hyperlinkFilter, isWebLink, modifierLinks, terminalFileLinkProvider } from "../lib/terminalFileLinks.ts";
 import { adjustTerminalGlyphs } from "../lib/terminalGlyphs.ts";
 import { terminalLabel } from "../lib/terminalLabel.ts";
 import { useMediaQuery } from "../lib/useMediaQuery.ts";
@@ -578,7 +578,14 @@ export function PaneTerminal({
     matchHerdrWidths(term);
     // the same policy as the linkHandler above: an http(s) address or nothing (S10)
     term.loadAddon(new WebLinksAddon((_event, uri) => { if (isWebLink(uri)) window.open(uri, "_blank", "noopener,noreferrer"); }));
-    term.registerLinkProvider(terminalFileLinkProvider(() => term.buffer.active, (path, event) => { if (linkPressed(event)) openFileRef.current?.(path); }));
+    // a bare name (`design.md`) is a link only under Cmd/Ctrl, drawn as the key goes down
+    const bareLinks = modifierLinks();
+    const onLinkModifier = (event: KeyboardEvent): void => bareLinks.update(event);
+    const offLinkModifier = (): void => bareLinks.reset();
+    window.addEventListener("keydown", onLinkModifier, { capture: true });
+    window.addEventListener("keyup", onLinkModifier, { capture: true });
+    window.addEventListener("blur", offLinkModifier);
+    term.registerLinkProvider(terminalFileLinkProvider(() => term.buffer.active, (path, event) => { if (linkPressed(event)) openFileRef.current?.(path); }, bareLinks));
     term.open(host);
     let compositionEndTimer: number | null = null;
     compositionCommitPendingRef.current = false;
@@ -1925,6 +1932,9 @@ export function PaneTerminal({
       window.removeEventListener("mousemove", onMouseMove, { capture: true });
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("keydown", onLinkModifier, { capture: true });
+      window.removeEventListener("keyup", onLinkModifier, { capture: true });
+      window.removeEventListener("blur", offLinkModifier);
       host.removeEventListener("copy", onCopy);
       stopEdge();
       selectionChange.dispose();

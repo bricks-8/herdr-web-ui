@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Terminal } from "@xterm/xterm";
-import { fileUriPath, hyperlinkFilter, isWebLink, terminalFileLinks } from "./terminalFileLinks.ts";
+import { fileUriPath, hyperlinkFilter, isWebLink, modifierLinks, terminalFileLinks } from "./terminalFileLinks.ts";
 
 /** a plain press of the primary button, as xterm hands one to a link */
 const click = { button: 0 } as MouseEvent;
@@ -209,6 +209,28 @@ describe("terminal file links", () => {
     expect(texts(1)).toEqual([]);
     expect(texts(2)).toEqual(["src/App.tsx"]);
     expect(texts(3)).toEqual(["./notes.txt", "~/x/a.md", "/etc/hosts.conf"]);
+    term.dispose();
+  });
+  it("opens a bare file name on Cmd+click or Ctrl+click only, drawn while the key is held", async () => {
+    const term = new Terminal({ cols: 120, allowProposedApi: true });
+    await written(term, "설계 문서를 다시 썼습니다(11_two-version-design.md, push 완료). see src/App.tsx process.env");
+    const bare = modifierLinks();
+    const opened: string[] = [];
+    const links = terminalFileLinks(term.buffer.active, 1, (path) => opened.push(path), bare);
+    expect(links.map((link) => link.text)).toEqual(["11_two-version-design.md", "src/App.tsx"]);
+    const [name, folder] = links;
+    expect(name?.decorations).toEqual({ pointerCursor: false, underline: false });
+    expect(folder?.decorations).toBeUndefined();
+    name?.activate(click);
+    expect(opened).toEqual([]);
+    bare.update({ metaKey: true, ctrlKey: false });
+    expect(name?.decorations).toEqual({ pointerCursor: true, underline: true });
+    name?.activate({ button: 0, metaKey: true } as MouseEvent);
+    name?.activate({ button: 0, ctrlKey: true } as MouseEvent);
+    folder?.activate(click);
+    expect(opened).toEqual(["11_two-version-design.md", "11_two-version-design.md", "src/App.tsx"]);
+    bare.reset();
+    expect(name?.decorations).toEqual({ pointerCursor: false, underline: false });
     term.dispose();
   });
   it("recognizes files with line and column suffixes", async () => {
