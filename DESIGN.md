@@ -792,6 +792,19 @@ One set for both themes: the card is island black wherever it shows.
   its copy of this window's session storage is cleared and its opener let go before it loads, so it
   starts with the pane alone and keeps a split of its own. A browser that blocks it changes nothing
   here and says so over the pane.
+- The app's windows know each other (`lib/windowPresence.ts`): each is named and says over a
+  BroadcastChannel which tabs it draws. A pane picked in the sidebar or the palette that another
+  window shows, and this one does not, is shown there: that window comes forward with the slot
+  showing it active and framed, and nothing opens here. Option+Tab past this window's last slot (or
+  Option+Shift+Tab before its first) brings the next window forward on its first (or last) slot,
+  in the order the windows opened; with no other window the step wraps around here. A window comes
+  forward only when another opens it by its name, which browsers allow from a key or a click (a
+  window cannot raise itself). A name the browser cannot reach, such as a window opened by hand,
+  opens a blank window that is closed at once; that window is not tried again, and the pick opens
+  the pane here as before. A window announces only the tabs it draws (a narrow window, its active
+  slot's), and asks the others whether they are there when it is shown again, dropping one that does
+  not answer. Being reachable by name keeps the windows in one browsing context group, which may run
+  their pages on one thread: many windows full of busy terminals share it.
 
 ### Worktree dialog (`.worktree-modal`)
 - From a workspace row's menu, as herdr's prefix+shift+g: **New worktree** asks for the branch

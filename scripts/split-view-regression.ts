@@ -678,6 +678,46 @@ export async function checkSplitView(browser: Browser, origin: string): Promise<
       console.log("PASS a pane moves to a window of its own from its slot, by a tab torn off, or opens there from More");
     }
 
+    // 9e. The app's windows know each other: a pane another window shows, picked in the sidebar, is
+    //     shown in that window and not opened here; Option+Tab past this window's last slot goes on to
+    //     the other window, and back.
+    {
+      const [home, away, third] = await panesFor("presence-home", "presence-away", "presence-third") as [string, string, string];
+      const { page, errors } = await open([home, away, third], "chat");
+      await splitRight(page, away);
+      const opened = page.context().waitForEvent("page");
+      await half(page, "right").getByRole("button", { name: "Move to a new window", exact: true }).click();
+      const other = await opened;
+      await other.waitForURL(/[?&]pane=/);
+      await other.getByRole("log", { name: `conversation of ${away}`, exact: true }).waitFor();
+      await page.waitForFunction(() => document.querySelectorAll(".pane-slot").length === 1);
+      await splitRight(page, third);
+      // the two windows have told each other what they draw
+      await page.waitForFunction(() => (window as unknown as Record<string, unknown>)["__herdrWebUiWindow"] === true);
+      await settled(page); await settled(other);
+
+      // the sidebar row of the pane the other window shows: shown there, nothing opened here
+      await page.locator(`.pane-select[title^="${away} —"]`).click();
+      await other.waitForFunction(() => document.querySelector(".pane-slot.is-revealed") !== null);
+      await settled(page);
+      assert.equal(await page.getByRole("log", { name: `conversation of ${away}`, exact: true }).count(), 0, "the pane is not opened in this window too");
+      assert.equal(await page.locator(".pane-slot").count(), 2);
+
+      // Option+Tab from this window's last slot (third, on the right) steps into the other window
+      await half(page, "right").locator(".terminal-host").click({ position: { x: 40, y: 40 } });
+      await isActive(page, "right");
+      await other.waitForFunction(() => document.querySelector(".pane-slot.is-revealed") === null);
+      await page.keyboard.press("Alt+Tab");
+      await other.waitForFunction(() => document.querySelector(".pane-slot.is-revealed") !== null);
+      // and Option+Tab there, a lone pane, steps on into this window's first slot
+      await page.waitForFunction(() => document.querySelector(".pane-slot.is-revealed") === null);
+      await other.keyboard.press("Alt+Tab");
+      await page.waitForFunction(() => document.querySelector(".pane-slot.is-active.is-revealed")?.classList.contains("joins-right") === true);
+      await other.close();
+      assert.deepEqual(errors, []);
+      console.log("PASS the app's windows show a pane where it already is, and Option+Tab steps between them");
+    }
+
     // 10. The phone's glass header follows the nested pane DOM, but never crosses a notice or tab row.
     {
       const [pane] = await panesFor("mobile-glass") as [string];

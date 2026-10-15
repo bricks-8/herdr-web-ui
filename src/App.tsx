@@ -36,7 +36,7 @@ import { applyPaneStatus } from "./lib/snapshot.ts";
 import { rosterPanes } from "./lib/dagPane.ts";
 import { SnapshotRequests } from "./lib/snapshotRequests.ts";
 import { alertPrefs, useSettings } from "./lib/settings.ts";
-import { setSplitDrawn, useShortcuts } from "./lib/shortcuts.ts";
+import { setSlotStepsAvailable, useShortcuts } from "./lib/shortcuts.ts";
 import { useMediaQuery } from "./lib/useMediaQuery.ts";
 import { PaneLenses } from "./lib/paneLens.ts";
 import { paneContextPress } from "./lib/paneCanvas.ts";
@@ -78,6 +78,7 @@ import {
 } from "./lib/split.ts";
 import { paneDrag } from "./lib/paneDrag.ts";
 import { openPaneWindow, outsideWindow, type ScreenPoint } from "./lib/newWindow.ts";
+import { createPresence, tabKey, type Arrival, type Presence } from "./lib/windowPresence.ts";
 import { SplitDropPreview } from "./components/SplitDropPreview.tsx";
 import { CrashProbe, RegionCrash } from "./components/AppCrash.tsx";
 import { RenderBoundary } from "./components/RenderBoundary.tsx";
@@ -331,6 +332,9 @@ export function App() {
     setSoloSlot(remaining);
   }, [setSplit]);
   const splitRef = useRef(split); splitRef.current = split;
+  // the app's other windows (lib/windowPresence.ts), while the app is unlocked
+  const presenceRef = useRef<Presence | null>(null);
+  const arriveRef = useRef<(arrival: Arrival) => void>(() => {});
   // the slot just arrived at (a step between slots, a pick of a pane another slot shows): its border
   // stands out a moment, so the eye finds where the keys now go
   // set again after a frame without it, so a second arrival at the same slot plays the frame again
@@ -763,6 +767,26 @@ export function App() {
     selectionSince.current = rosterSeq.current;
   }, [slotShowing, activateShowing]);
   const selectTargetRef = useRef(selectTarget); selectTargetRef.current = selectTarget;
+  // The app's windows know each other once the app is in: a slot step can go on into another window,
+  // and a pane another window shows is shown there (lib/windowPresence.ts)
+  useEffect(() => {
+    if (locked !== false) return;
+    const presence = createPresence((arrival) => arriveRef.current(arrival));
+    presenceRef.current = presence;
+    setSlotStepsAvailable(() => splitShownRef.current || presence.neighbour(1) !== null);
+    return () => { presence.dispose(); presenceRef.current = null; setSlotStepsAvailable(() => false); };
+  }, [locked]);
+  /** A pane picked in the sidebar or the palette: another window that shows its tab is brought forward
+   *  on it instead, unless this window shows it too; a window that cannot be reached leaves the pick here. */
+  const pickTarget = useCallback((machineId: string, paneId: string | null, view?: PaneView) => {
+    const current = selectionRef.current;
+    if (paneId !== null && !(current.paneId !== null && sameTab({ machineId, paneId }, { machineId: current.machineId, paneId: current.paneId })) && slotShowing(machineId, paneId) === null) {
+      const key = tabKey(machineId, tabOf({ machineId, paneId }) ?? paneId);
+      const holder = presenceRef.current?.holder(key) ?? null;
+      if (holder !== null && presenceRef.current?.bringForward(holder, { tab: key, target: { machineId, paneId }, ...(view ? { view } : {}) })) return;
+    }
+    selectTarget(machineId, paneId, view);
+  }, [selectTarget, sameTab, slotShowing, tabOf]);
   useEffect(() => {
     // An offline PC's cached roster cannot invalidate a selection. Once connected,
     // a closed pane (including one remembered across reloads) must release its selection.
@@ -963,10 +987,18 @@ export function App() {
   const drawnRoot = split ? pruneSlots(split.root, overlapping) : null;
   const splitOn = split !== null && wideScreen && selectedPaneId !== null && drawnRoot !== null && slotsOf(drawnRoot).length > 1;
   splitShownRef.current = splitOn;
-  setSplitDrawn(splitOn);
+
   // the split as drawn, and the slot a single pane is drawn in
   const drawnSplit: SplitState | null = splitOn ? { ...split, root: drawnRoot! } : null;
   const drawnSolo: SplitSlot = split ? split.active : soloSlot;
+  // the tabs this window draws, for the app's other windows: a narrow window draws its active slot alone
+  const drawnTabs = selectedPane ? [tabKey(selectedMachineId, selectedPane.tab_id)] : [];
+  if (drawnSplit) for (const slot of slotsOf(drawnSplit.root)) {
+    const shown = slot === drawnSplit.active ? undefined : slotPanes.get(slot);
+    if (shown) drawnTabs.push(tabKey(shown.target.machineId, shown.pane?.tab_id ?? shown.target.paneId));
+  }
+  const drawnTabsKey = drawnTabs.join("\0");
+  useEffect(() => { presenceRef.current?.announce(drawnTabsKey === "" ? [] : drawnTabsKey.split("\0")); }, [drawnTabsKey, locked]);
 
   // a slot's pane closed: another pane of its tab takes its place, else the slot closes. Two slots on
   // one tab (a pane moved in) is one too many. An offline PC's cached roster cannot say so, as for
@@ -1025,13 +1057,19 @@ export function App() {
     if (change) applySplit(change, keepFocus);
   };
   /** The slot before or after the active one, made active with the keyboard in it, and shown so. */
+  // Past this window's last slot (or before its first) the step goes on into the next of the app's
+  // windows, which comes forward on its first (or last) slot; with no other window it wraps around here.
   const stepSlot = (direction: -1 | 1): void => {
-    if (!drawnSplit) return;
-    const order = slotsOf(drawnSplit.root);
-    const next = order[(order.indexOf(drawnSplit.active) + direction + order.length) % order.length];
-    if (next === undefined || next === drawnSplit.active) return;
-    activateSlot(next);
-    revealSlot(next);
+    const order = drawnSplit ? slotsOf(drawnSplit.root) : [drawnSolo];
+    const at = order.indexOf(drawnSplit ? drawnSplit.active : drawnSolo);
+    const inside = order[at + direction];
+    if (inside !== undefined) { activateSlot(inside); revealSlot(inside); return; }
+    const neighbour = presenceRef.current?.neighbour(direction) ?? null;
+    if (neighbour !== null && presenceRef.current?.bringForward(neighbour, { edge: direction === 1 ? "first" : "last" })) return;
+    const wrapped = order[direction === 1 ? 0 : order.length - 1];
+    if (wrapped === undefined || order.length < 2) return;
+    activateSlot(wrapped);
+    revealSlot(wrapped);
   };
   const stepSlotRef = useRef(stepSlot); stepSlotRef.current = stepSlot;
   const closeSlot = (slot: SplitSlot): void => {
@@ -1065,6 +1103,26 @@ export function App() {
     if (change) applySplit(change);
   };
   const moveToWindowRef = useRef(moveToWindow); moveToWindowRef.current = moveToWindow;
+  // Another window brought this one forward: the slot it asked for is made active, with the keyboard in
+  // it, and shown so. A tab's pane is picked as a pick here would (the slot showing its tab takes it).
+  arriveRef.current = (arrival: Arrival): void => {
+    if ("edge" in arrival) {
+      const order = drawnSplit ? slotsOf(drawnSplit.root) : [drawnSolo];
+      const slot = arrival.edge === "first" ? order[0] : order[order.length - 1];
+      if (slot === undefined) return;
+      if (drawnSplit && slot !== drawnSplit.active) activateSlot(slot);
+      else paneControls.current?.focusInput();
+      revealSlot(slot);
+      return;
+    }
+    const { machineId, paneId } = arrival.target;
+    const current = selectedTarget();
+    const slot = current && sameTab(arrival.target, current) ? drawnSplit?.active ?? drawnSolo : slotShowing(machineId, paneId) ?? drawnSplit?.active ?? drawnSolo;
+    selectTargetRef.current(machineId, paneId, arrival.view);
+    revealSlot(slot);
+    // the keys go to the pane brought forward, once its slot is the active one
+    requestAnimationFrame(() => paneControls.current?.focusInput());
+  };
   /** The zone under a point of the pane area, the one last shown kept where the zones meet. */
   const zoneAt = (x: number, y: number): DropZone | null => {
     const box = paneAreaRef.current?.getBoundingClientRect();
@@ -1647,7 +1705,7 @@ export function App() {
           {/* a sidebar that cannot be drawn leaves the panes working */}
           <RenderBoundary resetKey={null} fallback={(retry) => <RegionCrash message={t("The sidebar can't be shown.")} retry={retry} />}>
             <CrashProbe region="sidebar" />
-            <MachineSidebar machines={machines} selectedMachineId={selectedMachineId} selectedPaneId={selectedPaneId} actions={actions} onSelect={selectTarget} onSetup={(machine, update = false) => { setUpdateRemote(update); setMachineDialog(machine); }} onNew={(id) => { setNewSessionMachineId(id); setNewTab(null); setNewSessionOpen(true); setDrawerOpen(false); }} />
+            <MachineSidebar machines={machines} selectedMachineId={selectedMachineId} selectedPaneId={selectedPaneId} actions={actions} onSelect={pickTarget} onSetup={(machine, update = false) => { setUpdateRemote(update); setMachineDialog(machine); }} onNew={(id) => { setNewSessionMachineId(id); setNewTab(null); setNewSessionOpen(true); setDrawerOpen(false); }} />
           </RenderBoundary>
           <SidebarResizer width={sidebarWidth} onResize={setSidebarWidth} />
         </aside>
@@ -1698,7 +1756,7 @@ export function App() {
             return (
               <MachineContext.Provider key={slot} value={machineId}>
               <div
-                className={`pane-slot${showsChat(pane, slotView) ? " is-chat" : ""}${splitOn ? active ? " is-active" : " is-inactive" : ""}${joins}${revealed?.slot === slot && splitOn ? " is-revealed" : ""}`}
+                className={`pane-slot${showsChat(pane, slotView) ? " is-chat" : ""}${splitOn ? active ? " is-active" : " is-inactive" : ""}${joins}${revealed?.slot === slot ? " is-revealed" : ""}`}
                 data-slot={slot}
                 style={placed}
                 // a press or the focus in another slot makes it the active one, before the press acts;
@@ -1854,7 +1912,7 @@ export function App() {
       {viewing !== null && <MachineContext.Provider value={viewing.machineId}>
         <FileViewer key={viewing.path} path={viewing.path} paneId={viewing.paneId} onClose={closeFile} onOpen={(path) => openFile({ ...viewing, path })} keyboardActive={!settingsOpen} />
       </MachineContext.Provider>}
-      <CommandPalette key={selectedMachineId} machines={machines} onSelect={selectTarget} open={paletteOpen} initialQuery={paletteQuery} onClose={() => setPaletteOpen(false)} snapshot={snapshot} online={selectedMachine?.state === "connected"} selectedPaneId={selectedPaneId} view={view} actions={actions} />
+      <CommandPalette key={selectedMachineId} machines={machines} onSelect={pickTarget} open={paletteOpen} initialQuery={paletteQuery} onClose={() => setPaletteOpen(false)} snapshot={snapshot} online={selectedMachine?.state === "connected"} selectedPaneId={selectedPaneId} view={view} actions={actions} />
     </div></MachineContext.Provider></MachineSessionsProvider>
   );
 }

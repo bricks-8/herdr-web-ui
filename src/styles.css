@@ -737,6 +737,21 @@ button {
   animation: slot-arrived 1.4s var(--ease-out);
 }
 
+/* a lone pane brought forward by another window holds the same frame a moment, then none */
+.pane-split:not(.is-split) > .pane-slot.is-revealed {
+  position: relative;
+}
+
+.pane-split:not(.is-split) > .pane-slot.is-revealed::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-banner);
+  border: 3px solid var(--accent);
+  pointer-events: none;
+  animation: slot-arrived 1.4s var(--ease-out) forwards;
+}
+
 @keyframes slot-arrived {
   0%, 60% {
     border-width: 3px;
@@ -749,7 +764,7 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pane-split.is-split > .pane-slot.is-revealed::after {
+  .pane-split > .pane-slot.is-revealed::after {
     animation: none;
     border-width: 3px;
   }

@@ -94,21 +94,21 @@ export function shortcutEventKey(event: ShortcutEventLike): string {
 }
 
 /**
- * Whether the split view draws more than one slot (App sets it): the slot steps are claimed only then,
- * so a single pane's terminal keeps their keys.
+ * Whether a slot step has somewhere to go (App sets it): another slot of the split view, or another of
+ * the app's windows. The steps are claimed only then, so a lone pane's terminal keeps their keys.
  */
-let splitDrawn = false;
-export function setSplitDrawn(drawn: boolean): void {
-  splitDrawn = drawn;
+let slotStepsAvailable: () => boolean = () => false;
+export function setSlotStepsAvailable(available: () => boolean): void {
+  slotStepsAvailable = available;
 }
 
 export function matchShortcut(event: ShortcutEventLike, platformIsMac: boolean, overrides: ShortcutOverrides = {}): ShortcutId | null {
   // Option+Tab steps to the next slot, with Shift to the one before; Alt+Tab elsewhere is the system's
   if (event.key === "Tab" && event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
-    return splitDrawn ? event.shiftKey ? "previous-slot" : "next-slot" : null;
+    return slotStepsAvailable() ? event.shiftKey ? "previous-slot" : "next-slot" : null;
   }
   const id = matchAnyShortcut(event, platformIsMac, overrides);
-  return (id === "previous-slot" || id === "next-slot") && !splitDrawn ? null : id;
+  return (id === "previous-slot" || id === "next-slot") && !slotStepsAvailable() ? null : id;
 }
 
 function matchAnyShortcut(event: ShortcutEventLike, platformIsMac: boolean, overrides: ShortcutOverrides): ShortcutId | null {

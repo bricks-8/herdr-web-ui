@@ -1,11 +1,13 @@
 import { linkSearch } from "./deepLink.ts";
 import type { SplitTarget } from "./split.ts";
+import { newWindowName } from "./windowPresence.ts";
 
 /**
  * A pane opened in a window of its own, to place on another screen and split there again. The window
  * opens blank first: a browser that blocked it says so (null) before anything here changes. Its copy
- * of this window's session storage is cleared and its opener let go before it loads the app, so it
- * starts with the pane alone instead of this window's split (lib/split.ts) and keeps its own after.
+ * of this window's session storage is cleared before it loads the app, so it starts with the pane
+ * alone instead of this window's split (lib/split.ts) and keeps its own after. It opens under a name
+ * of its own, which lets the app's windows bring each other forward (lib/windowPresence.ts).
  * Without the browser's window management permission a window opens on this window's screen, so
  * one meant for another screen is moved there by hand.
  */
@@ -48,14 +50,13 @@ export function paneWindowFeatures(frame: WindowFrame, at: ScreenPoint | null): 
 
 /** Opens the window: false when the browser blocked it. */
 export function openPaneWindow(target: SplitTarget, at: ScreenPoint | null = null): boolean {
-  const opened = window.open("", "_blank", paneWindowFeatures(window, at));
+  const opened = window.open("", newWindowName(), paneWindowFeatures(window, at));
   if (!opened) return false;
   try {
     opened.sessionStorage.clear();
   } catch {
     /* a browser that keeps the blank window's storage apart has nothing of this window's to clear */
   }
-  opened.opener = null;
   opened.location.replace(paneWindowUrl(target, window.location));
   return true;
 }
