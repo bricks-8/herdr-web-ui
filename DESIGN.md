@@ -779,6 +779,15 @@ One set for both themes: the card is island black wherever it shows.
 - A slot's bar names its pane and PC and carries its lens and Remove from the split. The active
   slot's bar has the accent: a press or a Tab into another slot makes it active. A tab is never
   drawn in two slots. Up to 768px only the active slot is drawn; the split is kept for a wider window.
+- A pane moves to a window of its own (`lib/newWindow.ts`) from its slot's bar (Move to a new
+  window), or when its tab, or a sidebar row that crossed the pane area, is let go outside the
+  window. The window opens near the pointer, on this window's screen unless the browser has the
+  window management permission. A slot here that showed the pane closes once the window is open; a
+  pane shown alone stays, and both windows then show it. On a desktop with a mouse, More's Open in a
+  new window opens the selected pane there and leaves this window as it is. The window opens blank,
+  its copy of this window's session storage is cleared and its opener let go before it loads, so it
+  starts with the pane alone and keeps a split of its own. A browser that blocks it changes nothing
+  here and says so over the pane.
 
 ### Worktree dialog (`.worktree-modal`)
 - From a workspace row's menu, as herdr's prefix+shift+g: **New worktree** asks for the branch

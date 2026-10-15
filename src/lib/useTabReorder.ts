@@ -10,7 +10,8 @@ export interface TabDragOut {
   start: (tabId: string) => void;
   move: (x: number, y: number) => void;
   back: () => void;
-  drop: (x: number, y: number) => void;
+  /** `screen`: the release's place on the screen, where a tab torn off the window opens */
+  drop: (x: number, y: number, screen: { x: number; y: number }) => void;
   cancel: () => void;
 }
 
@@ -156,7 +157,7 @@ export function useTabReorder({ owner, tabs, strip, moveTab, failed, stale, outs
     if (!held || event.pointerId !== held.pointerId) return;
     held.x = event.clientX; held.y = event.clientY;
     const boundary = held.started ? boundaryAt(held) : null;
-    if (held.started && !overStrip(held)) current.current.outside?.drop(held.x, held.y);
+    if (held.started && !overStrip(held)) current.current.outside?.drop(held.x, held.y, { x: event.screenX, y: event.screenY });
     cancelDrag();
     if (boundary !== null) requestMove(held.tabId, boundary);
   };

@@ -603,6 +603,67 @@ export async function checkSplitView(browser: Browser, origin: string): Promise<
       console.log("PASS panes open beside and below, boundaries move, a moved slot keeps its terminal, and slots close to one");
     }
 
+    // 9d. A pane moves to a window of its own: from its slot's bar it leaves this window's split, and
+    //     the window opens on that pane alone, with none of this window's split. A tab let go outside
+    //     the window tears off the same way; the More menu opens the selected pane in a window too.
+    {
+      const [stay, leave, torn] = await panesFor("window-stay", "window-leave", "window-torn") as [string, string, string];
+      const { page, errors } = await open([stay, leave, torn], "chat");
+      const popup = () => page.context().waitForEvent("page");
+      const slots = () => page.locator(".pane-slot").count();
+      await splitRight(page, leave);
+      // a browser that blocks the window: the slot stays, and the page says why
+      await page.evaluate(() => {
+        const real = window.open;
+        window.open = (() => { window.open = real; return null; }) as typeof window.open;
+      });
+      await half(page, "right").getByRole("button", { name: "Move to a new window", exact: true }).click();
+      await page.getByText("The browser blocked the new window. Allow pop-ups for this page and try again.").waitFor();
+      assert.equal(await slots(), 2, "a blocked window takes no slot away");
+      const opened = popup();
+      await half(page, "right").getByRole("button", { name: "Move to a new window", exact: true }).click();
+      const moved = await opened;
+      // the window opens blank, then loads the app on the pane
+      await moved.waitForURL(/[?&]pane=/);
+      assert.equal(new URL(moved.url()).searchParams.get("pane"), leave, "the window opens on the moved pane");
+      await page.waitForFunction(() => document.querySelectorAll(".pane-slot").length === 1);
+      await page.getByRole("log", { name: `conversation of ${stay}`, exact: true }).waitFor();
+      await moved.getByRole("log", { name: `conversation of ${leave}`, exact: true }).waitFor();
+      assert.equal(await moved.locator(".pane-slot").count(), 1, "the new window starts with the pane alone");
+      assert.equal(await moved.evaluate(() => sessionStorage.getItem("herdr-web-ui:split")), null, "and with none of this window's split");
+      await moved.close();
+
+      // a tab dragged out of its strip and let go beyond the window's left edge
+      await splitRight(page, torn);
+      const tab = (await half(page, "right").locator(".tab-strip [role=tab]").first().boundingBox())!;
+      const tornOff = popup();
+      await page.mouse.move(tab.x + tab.width / 2, tab.y + tab.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(tab.x + tab.width / 2, tab.y + 120, { steps: 6 });
+      await page.mouse.move(-40, tab.y + 120, { steps: 10 });
+      await page.mouse.up();
+      const second = await tornOff;
+      // the window opens blank, then loads the app on the pane
+      await second.waitForURL(/[?&]pane=/);
+      assert.equal(new URL(second.url()).searchParams.get("pane"), torn, "the torn-off tab's pane opens in the window");
+      await page.waitForFunction(() => document.querySelectorAll(".pane-slot").length === 1);
+      await page.getByRole("log", { name: `conversation of ${stay}`, exact: true }).waitFor();
+      await second.close();
+
+      // the More menu opens the selected pane in a window and leaves this one as it was
+      const fromMenu = popup();
+      await page.getByRole("button", { name: "More", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Open in a new window" }).click();
+      const third = await fromMenu;
+      // the window opens blank, then loads the app on the pane
+      await third.waitForURL(/[?&]pane=/);
+      assert.equal(new URL(third.url()).searchParams.get("pane"), stay);
+      assert.equal(await slots(), 1);
+      await third.close();
+      assert.deepEqual(errors, []);
+      console.log("PASS a pane moves to a window of its own from its slot, by a tab torn off, or opens there from More");
+    }
+
     // 10. The phone's glass header follows the nested pane DOM, but never crosses a notice or tab row.
     {
       const [pane] = await panesFor("mobile-glass") as [string];

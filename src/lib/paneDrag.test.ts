@@ -17,11 +17,11 @@ describe("tab drag out of its strip", () => {
 
   it("hands a drop to App's handler once, and ends the drag", () => {
     const drops: unknown[] = [];
-    paneDrag.onDrop((target, x, y) => drops.push([target, x, y]));
+    paneDrag.onDrop((target, x, y, screen) => drops.push([target, x, y, screen]));
     paneDrag.start(A);
-    paneDrag.drop(5, 6);
-    paneDrag.drop(7, 8);
-    expect(drops).toEqual([[A, 5, 6]]);
+    paneDrag.drop(5, 6, { x: 105, y: 186 });
+    paneDrag.drop(7, 8, { x: 107, y: 188 });
+    expect(drops).toEqual([[A, 5, 6, { x: 105, y: 186 }]]);
     expect(paneDrag.snapshot()).toBeNull();
   });
 
@@ -32,7 +32,7 @@ describe("tab drag out of its strip", () => {
     expect(paneDrag.snapshot()).toBeNull();
     paneDrag.start(A);
     paneDrag.cancel();
-    paneDrag.drop(1, 1);
+    paneDrag.drop(1, 1, { x: 1, y: 1 });
     expect(drops).toEqual([]);
   });
 

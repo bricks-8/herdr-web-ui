@@ -1,5 +1,5 @@
 import { type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Bell, Ellipsis, FolderOpen, Link, Menu, MessageSquare, PanelLeft, Search, SquareTerminal, X } from "lucide-react";
+import { AppWindow, Bell, Ellipsis, FolderOpen, Link, Menu, MessageSquare, PanelLeft, Search, SquareTerminal, X } from "lucide-react";
 
 import type { AgentStatus, ServerMessage, AccessRefusal, HealthAuth, HerdrPane, HerdrWorkspace } from "../shared/protocol.ts";
 import { ApiError, authenticate, fetchHealth, fetchBridgeHealth, fetchMachines, fetchSession, pairDevice, routeMissing, sendTestPush, signOut, splitPane, zoomPane, type HealthInfo } from "./lib/api.ts";
@@ -77,6 +77,7 @@ import {
   sameTarget, slotRects, slotsOf, splitDividers, splitShape, storedSplit, storeSplit, zoneRect, type DropZone, type SplitChange, type SplitSlot, type SplitState, type SplitTarget,
 } from "./lib/split.ts";
 import { paneDrag } from "./lib/paneDrag.ts";
+import { openPaneWindow, outsideWindow, type ScreenPoint } from "./lib/newWindow.ts";
 import { SplitDropPreview } from "./components/SplitDropPreview.tsx";
 import { CrashProbe, RegionCrash } from "./components/AppCrash.tsx";
 import { RenderBoundary } from "./components/RenderBoundary.tsx";
@@ -284,6 +285,7 @@ export function App() {
   // from 769px the drawer is a plain sidebar column and its toggle is hidden, so a drawer a
   // narrow window opened must not come back (with its scrim) the next time the window narrows
   const wideScreen = useMediaQuery("(min-width: 769px)");
+  const finePointer = useMediaQuery("(pointer: fine)");
   useEffect(() => { if (wideScreen) setDrawerOpen(false); }, [wideScreen]);
   // with a generation (lib/selectionMark.ts): a call that answers after the user opened another pane or PC leaves
   // the selection alone. Marked at commit, not in render: a render React throws away (Strict Mode, a replay)
@@ -1026,6 +1028,19 @@ export function App() {
     const change = activateSplitSlot(open, current, slot);
     if (change) applySplit({ ...change, select: { machineId, paneId } }, !focusInput);
   };
+  /** A pane moved to a window of its own: a slot here that shows its tab gives it up, so the pane
+   *  is not drawn twice, and the window opens with the pane alone (lib/newWindow.ts). */
+  // The window opens first: a slot closes only once there is a window to show its pane.
+  const moveToWindow = (target: SplitTarget, at: ScreenPoint | null = null): void => {
+    if (!openPaneWindow(target, at)) { setLayoutNotice(t("The browser blocked the new window. Allow pop-ups for this page and try again.")); return; }
+    const current = selectedTarget();
+    const open = splitRef.current;
+    if (!splitOn || !open || !current) return;
+    const slot = sameTab(target, current) ? open.active : Object.entries(open.panes).find(([, shown]) => sameTab(shown, target))?.[0];
+    const change = slot === undefined ? null : closeSplitSlot(open, current, slot);
+    if (change) applySplit(change);
+  };
+  const moveToWindowRef = useRef(moveToWindow); moveToWindowRef.current = moveToWindow;
   /** The zone under a point of the pane area, the one last shown kept where the zones meet. */
   const zoneAt = (x: number, y: number): DropZone | null => {
     const box = paneAreaRef.current?.getBoundingClientRect();
@@ -1034,7 +1049,13 @@ export function App() {
   const zoneAtRef = useRef(zoneAt); zoneAtRef.current = zoneAt;
   /** A pane dropped at a point: it opens beside the slot under it, or in its place. A pane of a tab a
    *  slot already shows counts as that slot's own pane, and is then picked in it. */
-  const dockAt = (dragged: SplitTarget, x: number, y: number): void => {
+  const dockAt = (dragged: SplitTarget, x: number, y: number, screen: ScreenPoint | null = null): void => {
+    // let go outside the window: the pane tears off into a window of its own, under the pointer
+    if (screen && outsideWindow(screen, window)) {
+      clearDropPreview();
+      moveToWindow(dragged, screen);
+      return;
+    }
     const zone = zoneAt(x, y);
     clearDropPreview();
     const current = selectedTarget();
@@ -1050,9 +1071,13 @@ export function App() {
   };
   const dockAtRef = useRef(dockAt); dockAtRef.current = dockAt;
   useEffect(() => {
-    paneDrag.onDrop((target, x, y) => dockAtRef.current(target, x, y));
+    paneDrag.onDrop((target, x, y, screen) => dockAtRef.current(target, x, y, screen));
     return () => paneDrag.onDrop(null);
   }, []);
+  // a sidebar row's native drag: its pane, read as the drag starts (its data is sealed after that),
+  // and whether it crossed the pane area; refs, so an effect run during the drag keeps them
+  const carriedRef = useRef<SplitTarget | null>(null);
+  const overPaneRef = useRef(false);
   // a tab dragged out of its strip: the guide follows it as a sidebar row's drag does below
   const splitDragOn = wideScreen && selectedPaneId !== null;
   useEffect(() => {
@@ -1068,6 +1093,7 @@ export function App() {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     setPaneDragging(true);
+    overPaneRef.current = true;
     showDropTarget(zoneAt(event.clientX, event.clientY));
   };
   const paneDragLeave = (event: DragEvent<HTMLDivElement>): void => {
@@ -1091,20 +1117,35 @@ export function App() {
   useEffect(() => {
     if (!splitDragOn) { clearDropPreview(); return; }
     const start = (event: globalThis.DragEvent): void => {
+      carriedRef.current = null;
+      overPaneRef.current = false;
       if (event.dataTransfer?.types.includes(PANE_DRAG_TYPE)) {
+        carriedRef.current = draggedPane(event.dataTransfer.getData(PANE_DRAG_TYPE));
         showDropTarget(null);
         setPaneDragging(true);
       }
     };
+    // a row let go outside the window, where nothing took it, after it crossed the pane area: the pane
+    // tears off into a window of its own. A row only reordered in the sidebar, which sits at the
+    // window's edge, never does. A drag cancelled with Escape out there reads the same and tears off too
+    const end = (event: globalThis.DragEvent): void => {
+      const target = carriedRef.current;
+      carriedRef.current = null;
+      if (!target || !overPaneRef.current || event.dataTransfer?.dropEffect !== "none") return;
+      const at = { x: event.screenX, y: event.screenY };
+      if (outsideWindow(at, window)) moveToWindowRef.current(target, at);
+    };
     const cancel = (event: KeyboardEvent): void => { if (event.key === "Escape") clearDropPreview(); };
     window.addEventListener("dragstart", start);
     window.addEventListener("dragend", clearDropPreview);
+    window.addEventListener("dragend", end);
     window.addEventListener("drop", clearDropPreview);
     window.addEventListener("blur", clearDropPreview);
     window.addEventListener("keydown", cancel);
     return () => {
       window.removeEventListener("dragstart", start);
       window.removeEventListener("dragend", clearDropPreview);
+      window.removeEventListener("dragend", end);
       window.removeEventListener("drop", clearDropPreview);
       window.removeEventListener("blur", clearDropPreview);
       window.removeEventListener("keydown", cancel);
@@ -1418,6 +1459,10 @@ export function App() {
   const moreItems: RowMenuItem[] = [
     ...(selectedPane && !selectedPane.restore_error ? [{ id: "find", label: t("Find in terminal"), icon: Search, run: actions.openFind }] : []),
     ...(selectedPane ? [{ id: "files", label: t("Browse files"), icon: FolderOpen, run: () => setFilesOpen(true) }] : []),
+    // a desktop's own window for the pane (lib/newWindow.ts): a phone's or an installed iPhone app's would leave the app
+    ...(selectedPane && !selectedPane.restore_error && wideScreen && finePointer ? [{ id: "new-window", label: t("Open in a new window"), icon: AppWindow, run: () => {
+      if (!openPaneWindow({ machineId: selectedMachineId, paneId: selectedPane.pane_id })) setLayoutNotice(t("The browser blocked the new window. Allow pop-ups for this page and try again."));
+    } }] : []),
     // the address says where the app is (lib/deepLink.ts); a phone has no address bar to copy it from
     { id: "copy-link", label: t("Copy link"), icon: Link, run: () => void copyText(window.location.href).then((ok) => { if (ok) setHeaderNote("copied"); }) },
     ...(bellVisible ? [{ id: "alerts", label: t("Alerts"), hint: bell.state, checked: bell.on, title: bell.title, icon: Bell, run: () => void bell.run() }] : []),
@@ -1649,6 +1694,11 @@ export function App() {
                     <button type="button" className="icon-button pane-slot-action" aria-label={t(slotView === "chat" ? "Show the terminal" : "Show the chat")} title={t(slotView === "chat" ? "Show the terminal" : "Show the chat")} onClick={toggleSlotView}>
                       {slotView === "chat" ? <SquareTerminal /> : <MessageSquare />}
                     </button>
+                    {paneId !== null && (
+                      <button type="button" className="icon-button pane-slot-action" aria-label={t("Move to a new window")} title={t("Move to a new window")} onClick={() => moveToWindow({ machineId, paneId })}>
+                        <AppWindow />
+                      </button>
+                    )}
                     <button type="button" className="icon-button pane-slot-action" aria-label={t("Remove from the split")} title={t("Remove from the split")} onClick={() => closeSlot(slot)}>
                       <X />
                     </button>

@@ -13,7 +13,8 @@ export interface PaneDrag {
 
 let current: PaneDrag | null = null;
 const listeners = new Set<() => void>();
-let dropHandler: ((target: SplitTarget, x: number, y: number) => void) | null = null;
+type DropHandler = (target: SplitTarget, x: number, y: number, screen: { x: number; y: number }) => void;
+let dropHandler: DropHandler | null = null;
 
 const set = (next: PaneDrag | null): void => {
   if (next === current) return;
@@ -37,16 +38,16 @@ export const paneDrag = {
   back(): void {
     if (current?.point) set({ target: current.target, point: null });
   },
-  drop(x: number, y: number): void {
+  drop(x: number, y: number, screen: { x: number; y: number }): void {
     const held = current;
     set(null);
-    if (held) dropHandler?.(held.target, x, y);
+    if (held) dropHandler?.(held.target, x, y, screen);
   },
   cancel(): void {
     set(null);
   },
   /** App's: what a drop does */
-  onDrop(handler: ((target: SplitTarget, x: number, y: number) => void) | null): void {
+  onDrop(handler: DropHandler | null): void {
     dropHandler = handler;
   },
 };
