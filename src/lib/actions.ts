@@ -19,6 +19,8 @@ export interface AppActions {
   selectPane: (paneId: string) => void;
   /** the previous/next pane in sidebar order; wraps around */
   selectAdjacentPane: (direction: -1 | 1) => void;
+  /** the split view's slot before or after the active one, in reading order; nothing without a split */
+  selectAdjacentSlot: (direction: -1 | 1) => void;
   setView: (view: PaneView) => void;
   toggleView: () => void;
   /** Focus the selected pane's mounted input without sending any text or keys. */

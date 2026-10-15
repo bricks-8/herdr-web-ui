@@ -722,6 +722,39 @@ button {
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
+/* the active slot is framed whole, over its terminal and chat, so the one the keys go to reads at a
+   glance; the slot just arrived at (a step, a pick of a pane it shows) holds a heavier frame a moment */
+.pane-split.is-split > .pane-slot.is-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-banner);
+  border: var(--hairline) solid var(--accent);
+  pointer-events: none;
+}
+
+.pane-split.is-split > .pane-slot.is-revealed::after {
+  animation: slot-arrived 1.4s var(--ease-out);
+}
+
+@keyframes slot-arrived {
+  0%, 60% {
+    border-width: 3px;
+    box-shadow: inset 0 0 0 3px var(--accent-tint);
+  }
+  100% {
+    border-width: var(--hairline);
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-split.is-split > .pane-slot.is-revealed::after {
+    animation: none;
+    border-width: 3px;
+  }
+}
+
 .pane-slot-title {
   flex: 1 1 auto;
   min-width: 0;

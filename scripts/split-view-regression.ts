@@ -585,6 +585,20 @@ export async function checkSplitView(browser: Browser, origin: string): Promise<
       await page.keyboard.press("ArrowRight");
       await page.waitForFunction((value) => Number(document.querySelector('.pane-split-divider[data-dir="row"]')?.getAttribute("aria-valuenow")) === value, before + 5);
 
+      // a step to the next slot, in reading order, from the keyboard: that slot is active, framed a
+      // moment heavier, and the keys go to it
+      const order = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".pane-slot")].map((slot) => ({ slot: slot.dataset["slot"], active: slot.classList.contains("is-active") })));
+      await page.keyboard.press("Alt+Tab");
+      await page.waitForFunction((before) => {
+        const active = document.querySelector<HTMLElement>(".pane-slot.is-active");
+        return active !== null && active.dataset["slot"] !== before && active.classList.contains("is-revealed");
+      }, order.find((item) => item.active)?.slot);
+      await page.waitForFunction(() => document.activeElement?.closest(".pane-slot.is-active") !== null);
+      await page.keyboard.press("Alt+Shift+Tab");
+      await page.waitForFunction((before) => document.querySelector<HTMLElement>(".pane-slot.is-active")?.dataset["slot"] === before, order.find((item) => item.active)?.slot);
+      // the steps were pressed after the boundary was focused: it took neither as a resize
+      assert.equal(Number(await divider.getAttribute("aria-valuenow")), before + 5, "a slot step does not resize the focused boundary");
+
       const kept = (await slotOf(second).locator(".pane-terminal").elementHandle())!;
       await dropAt(page, second, { x: 0.95, y: 0.92, edge: "bottom" });
       await page.waitForFunction(() => document.querySelector(".pane-slot.is-active") !== null);

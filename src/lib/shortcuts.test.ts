@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { isAppShortcut, isMacPlatform, matchShortcut, type ShortcutEventLike, keepsArrowsForText, shortcutConflict, shortcutDisplayKeys, shortcutKeys } from "./shortcuts.ts";
+import { isAppShortcut, isMacPlatform, matchShortcut, type ShortcutEventLike, keepsArrowsForText, shortcutConflict, shortcutDisplayKeys, shortcutKeys, setSplitDrawn} from "./shortcuts.ts";
 import { isReservedShortcutKey, sanitizeShortcutOverrides } from "./shortcutBindings.ts";
 
 function keyEvent(key: string, patch: Partial<ShortcutEventLike> = {}): ShortcutEventLike {
@@ -26,6 +26,16 @@ describe("matchShortcut", () => {
     expect(matchShortcut(keyEvent("n", { ctrlKey: true }), false)).toBe("new-session");
     expect(matchShortcut(keyEvent("ArrowUp", { ctrlKey: true }), false)).toBe("previous-pane");
     expect(matchShortcut(keyEvent("ArrowDown", { ctrlKey: true }), false)).toBe("next-pane");
+    // Option+Tab steps the split's slots, only while a split is drawn: a single pane's terminal keeps it
+    const optionTab = (shiftKey: boolean) => ({ key: "Tab", code: "Tab", ctrlKey: false, metaKey: false, altKey: true, shiftKey });
+    expect(matchShortcut(optionTab(false), true)).toBeNull();
+    setSplitDrawn(true);
+    expect(matchShortcut(optionTab(false), true)).toBe("next-slot");
+    expect(matchShortcut(optionTab(true), true)).toBe("previous-slot");
+    expect(matchShortcut({ ...optionTab(false), altKey: false }, true)).toBeNull();
+    expect(matchShortcut({ ...optionTab(false), metaKey: true }, true)).toBeNull();
+    expect(matchShortcut(keyEvent("ArrowLeft", { ctrlKey: true }), false)).toBeNull();
+    setSplitDrawn(false);
     expect(matchShortcut(keyEvent(",", { ctrlKey: true }), false)).toBe("settings");
     expect(matchShortcut(keyEvent("<", { ctrlKey: true, code: "Comma" }), false)).toBe("settings");
   });

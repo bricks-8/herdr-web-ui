@@ -134,6 +134,8 @@ export const ZH: Record<string, string> = {
   "New workspace": "新建工作区",
   "Previous pane": "上一个窗格",
   "Next pane": "下一个窗格",
+  "Previous split slot (Option+Shift+Tab)": "上一个分屏格 (Option+Shift+Tab)",
+  "Next split slot (Option+Tab)": "下一个分屏格 (Option+Tab)",
 
   // ---- agent status words (lib/status.ts) ----
   "READY": "就绪",

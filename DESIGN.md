@@ -777,7 +777,11 @@ One set for both themes: the card is island black wherever it shows.
   terminals. Neighbouring slots share a `--border-strong` hairline; a boundary has a 7px hit
   region, a 15 to 85% limit and a keyboard separator that takes arrow keys in 5% steps.
 - A slot's bar names its pane and PC and carries its lens and Remove from the split. The active
-  slot's bar has the accent: a press or a Tab into another slot makes it active. A tab is never
+  slot's bar has the accent, and a `--accent` hairline frames the whole slot over its terminal and
+  chat. A press or a Tab into another slot makes it active; Option+Tab steps to the next slot in
+  reading order and Option+Shift+Tab to the one before, with the keyboard in it (plain Tab stays the
+  terminal's and the composer's completion). Settings can add a Mod+Shift chord for either step. The slot arrived at by a step, or by a pick of a pane it shows, holds a 3px
+  frame for a moment. A tab is never
   drawn in two slots. Up to 768px only the active slot is drawn; the split is kept for a wider window.
 - A pane moves to a window of its own (`lib/newWindow.ts`) from its slot's bar (Move to a new
   window), or when its tab, or a sidebar row that crossed the pane area, is let go outside the

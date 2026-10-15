@@ -132,6 +132,8 @@ export const JA: Record<string, string> = {
   "New workspace": "新しいワークスペース",
   "Previous pane": "前のペイン",
   "Next pane": "次のペイン",
+  "Previous split slot (Option+Shift+Tab)": "前の分割枠 (Option+Shift+Tab)",
+  "Next split slot (Option+Tab)": "次の分割枠 (Option+Tab)",
 
   // ---- agent status words (lib/status.ts) ----
   "READY": "待機",

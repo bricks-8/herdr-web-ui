@@ -36,7 +36,7 @@ import { applyPaneStatus } from "./lib/snapshot.ts";
 import { rosterPanes } from "./lib/dagPane.ts";
 import { SnapshotRequests } from "./lib/snapshotRequests.ts";
 import { alertPrefs, useSettings } from "./lib/settings.ts";
-import { useShortcuts } from "./lib/shortcuts.ts";
+import { setSplitDrawn, useShortcuts } from "./lib/shortcuts.ts";
 import { useMediaQuery } from "./lib/useMediaQuery.ts";
 import { PaneLenses } from "./lib/paneLens.ts";
 import { paneContextPress } from "./lib/paneCanvas.ts";
@@ -331,6 +331,19 @@ export function App() {
     setSoloSlot(remaining);
   }, [setSplit]);
   const splitRef = useRef(split); splitRef.current = split;
+  // the slot just arrived at (a step between slots, a pick of a pane another slot shows): its border
+  // stands out a moment, so the eye finds where the keys now go
+  // set again after a frame without it, so a second arrival at the same slot plays the frame again
+  const [revealed, setRevealed] = useState<{ slot: SplitSlot } | null>(null);
+  const revealSlot = useCallback((slot: SplitSlot): void => {
+    setRevealed(null);
+    requestAnimationFrame(() => setRevealed({ slot }));
+  }, []);
+  useEffect(() => {
+    if (!revealed) return;
+    const timer = window.setTimeout(() => setRevealed(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [revealed]);
   // whether the other slots are drawn: a narrow window keeps the split but shows the active slot alone
   const splitShownRef = useRef(false);
   // when a key was last pressed: a focus moving into another slot makes it active only right after
@@ -524,8 +537,8 @@ export function App() {
     const current = selectionRef.current;
     if (open === null || slot === null || current.paneId === null) return;
     const change = activateSplitSlot(open, { machineId: current.machineId, paneId: current.paneId }, slot);
-    if (change?.split) setSplit(change.split);
-  }, [setSplit]);
+    if (change?.split) { setSplit(change.split); revealSlot(slot); }
+  }, [setSplit, revealSlot]);
   /** the pane is drawn in a slot other than the active one */
   const shownBeside = (machineId: string, paneId: string): boolean =>
     splitShownRef.current && Object.values(splitRef.current?.panes ?? {}).some((target) => sameTarget(target, { machineId, paneId }));
@@ -950,6 +963,7 @@ export function App() {
   const drawnRoot = split ? pruneSlots(split.root, overlapping) : null;
   const splitOn = split !== null && wideScreen && selectedPaneId !== null && drawnRoot !== null && slotsOf(drawnRoot).length > 1;
   splitShownRef.current = splitOn;
+  setSplitDrawn(splitOn);
   // the split as drawn, and the slot a single pane is drawn in
   const drawnSplit: SplitState | null = splitOn ? { ...split, root: drawnRoot! } : null;
   const drawnSolo: SplitSlot = split ? split.active : soloSlot;
@@ -1010,6 +1024,16 @@ export function App() {
     const change = activateSplitSlot(split, current, slot);
     if (change) applySplit(change, keepFocus);
   };
+  /** The slot before or after the active one, made active with the keyboard in it, and shown so. */
+  const stepSlot = (direction: -1 | 1): void => {
+    if (!drawnSplit) return;
+    const order = slotsOf(drawnSplit.root);
+    const next = order[(order.indexOf(drawnSplit.active) + direction + order.length) % order.length];
+    if (next === undefined || next === drawnSplit.active) return;
+    activateSlot(next);
+    revealSlot(next);
+  };
+  const stepSlotRef = useRef(stepSlot); stepSlotRef.current = stepSlot;
   const closeSlot = (slot: SplitSlot): void => {
     const current = selectedTarget();
     if (!splitOn || current === null) return;
@@ -1331,6 +1355,7 @@ export function App() {
         const next = panes[(index + direction + panes.length) % panes.length];
         if (next) selectPane(next.pane_id);
       },
+      selectAdjacentSlot: (direction) => stepSlotRef.current(direction),
       setView,
       toggleView: () => { setView(view === "chat" ? "terminal" : "chat"); setDrawerOpen(false); },
       focusInput: () => paneControls.current?.focusInput(),
@@ -1673,7 +1698,7 @@ export function App() {
             return (
               <MachineContext.Provider key={slot} value={machineId}>
               <div
-                className={`pane-slot${showsChat(pane, slotView) ? " is-chat" : ""}${splitOn ? active ? " is-active" : " is-inactive" : ""}${joins}`}
+                className={`pane-slot${showsChat(pane, slotView) ? " is-chat" : ""}${splitOn ? active ? " is-active" : " is-inactive" : ""}${joins}${revealed?.slot === slot && splitOn ? " is-revealed" : ""}`}
                 data-slot={slot}
                 style={placed}
                 // a press or the focus in another slot makes it the active one, before the press acts;
@@ -1775,6 +1800,8 @@ export function App() {
               aria-valuemin={15} aria-valuemax={85} aria-valuenow={Math.round(ratio * 100)}
               onPointerDown={(event) => dragDivider(event, path, dir, area)}
               onKeyDown={(event) => {
+                // a chord with a modifier is an app shortcut (a slot step), not a resize
+                if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
                 const step = { ArrowLeft: -0.05, ArrowUp: -0.05, ArrowRight: 0.05, ArrowDown: 0.05 }[event.key];
                 if (step === undefined || (dir === "row") !== (event.key === "ArrowLeft" || event.key === "ArrowRight")) return;
                 event.preventDefault();

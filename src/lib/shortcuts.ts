@@ -22,6 +22,11 @@ export const SHORTCUTS = [
   { id: "split-down", label: "Split pane down", keys: [] },
   { id: "previous-pane", label: "Previous pane", keys: ["Mod", "Shift", "ArrowUp"] },
   { id: "next-pane", label: "Next pane", keys: ["Mod", "Shift", "ArrowDown"] },
+  // the slots of the split view, in reading order (lib/split.ts): Option+Tab and Option+Shift+Tab
+  // (matchShortcut), as plain Tab stays the terminal's and the composer's completion; a Mod+Shift
+  // chord can be added in Settings
+  { id: "previous-slot", label: "Previous split slot (Option+Shift+Tab)", keys: [] },
+  { id: "next-slot", label: "Next split slot (Option+Tab)", keys: [] },
   { id: "settings", label: "Settings", keys: ["Mod", "Shift", ","] },
   // listed only: held, not dispatched; VoiceInput.tsx listens for it itself (isVoiceShortcut)
   { id: "voice", label: "Dictate (hold)", keys: ["Mod", "Shift", "Space"] },
@@ -88,7 +93,25 @@ export function shortcutEventKey(event: ShortcutEventLike): string {
       : letter.length === 1 ? letter.toLowerCase() : letter;
 }
 
+/**
+ * Whether the split view draws more than one slot (App sets it): the slot steps are claimed only then,
+ * so a single pane's terminal keeps their keys.
+ */
+let splitDrawn = false;
+export function setSplitDrawn(drawn: boolean): void {
+  splitDrawn = drawn;
+}
+
 export function matchShortcut(event: ShortcutEventLike, platformIsMac: boolean, overrides: ShortcutOverrides = {}): ShortcutId | null {
+  // Option+Tab steps to the next slot, with Shift to the one before; Alt+Tab elsewhere is the system's
+  if (event.key === "Tab" && event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
+    return splitDrawn ? event.shiftKey ? "previous-slot" : "next-slot" : null;
+  }
+  const id = matchAnyShortcut(event, platformIsMac, overrides);
+  return (id === "previous-slot" || id === "next-slot") && !splitDrawn ? null : id;
+}
+
+function matchAnyShortcut(event: ShortcutEventLike, platformIsMac: boolean, overrides: ShortcutOverrides): ShortcutId | null {
   if (event.isComposing || event.keyCode === 229) return null;
   const hasMod = platformIsMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
   if (!hasMod || !event.shiftKey || event.altKey) return null;
@@ -213,6 +236,12 @@ export function useShortcuts(actions: AppActions, enabled: boolean): void {
           break;
         case "next-pane":
           actions.selectAdjacentPane(1);
+          break;
+        case "previous-slot":
+          actions.selectAdjacentSlot(-1);
+          break;
+        case "next-slot":
+          actions.selectAdjacentSlot(1);
           break;
         case "settings":
           actions.openSettings();

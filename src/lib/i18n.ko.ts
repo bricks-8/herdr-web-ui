@@ -130,6 +130,8 @@ export const KO: Record<string, string> = {
   "New workspace": "새 워크스페이스",
   "Previous pane": "이전 패널",
   "Next pane": "다음 패널",
+  "Previous split slot (Option+Shift+Tab)": "이전 분할 칸 (Option+Shift+Tab)",
+  "Next split slot (Option+Tab)": "다음 분할 칸 (Option+Tab)",
 
   // ---- agent status words (lib/status.ts) ----
   "READY": "대기",
