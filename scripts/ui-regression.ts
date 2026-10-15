@@ -2009,11 +2009,12 @@ try {
     await page.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2);
     await page.waitForFunction(() => {
       const guide = document.querySelector(".split-drop");
-      return guide?.classList.contains("is-visible") === true && guide.getAttribute("data-side") === "right";
+      return guide?.classList.contains("is-visible") === true && guide.getAttribute("data-edge") === "right";
     });
     await page.mouse.up();
     await until(async () => await page.locator(".pane-slot").count() === 2, "two halves after the drop");
-    const half = (side: string) => page.locator(`.pane-slot[data-side="${side}"]`);
+    // the left of two slots has a boundary on its right
+    const half = (side: string) => page.locator(side === "left" ? ".pane-split.is-split > .pane-slot.joins-right" : ".pane-split.is-split > .pane-slot:not(.joins-right)");
     await half("left").getByRole("log", { name: `conversation of ${paneA}`, exact: true }).waitFor();
     await half("right").getByRole("log", { name: `conversation of ${paneB}`, exact: true }).waitFor();
     assert.equal(await half("right").evaluate((slot) => slot.classList.contains("is-active")), true, "the dropped pane's half is active");
@@ -2027,7 +2028,7 @@ try {
     await half("left").getByRole("log", { name: `conversation of ${paneA}`, exact: true }).waitFor();
     await half("right").getByRole("log", { name: `conversation of ${paneB}`, exact: true }).waitFor();
     assert.match(await page.evaluate(() => sessionStorage.getItem("herdr-web-ui:split") ?? ""), /"active":"a"/, "the split is kept for a reload");
-    await half("right").getByRole("button", { name: "Close this half", exact: true }).click();
+    await half("right").getByRole("button", { name: "Remove from the split", exact: true }).click();
     await until(async () => await page.locator(".pane-slot").count() === 1, "one pane after closing a half");
     assert.equal(await page.evaluate(() => sessionStorage.getItem("herdr-web-ui:split")), null);
     await page.getByRole("log", { name: `conversation of ${paneA}`, exact: true }).waitFor();

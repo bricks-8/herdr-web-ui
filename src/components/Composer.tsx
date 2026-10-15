@@ -56,6 +56,7 @@ import { MicButton, VoiceRecordingPill, useDictation } from "./VoiceInput.tsx";
 import { cachedPaneCommands } from "../lib/paneCommandCache.ts";
 import { useT } from "../lib/i18n.ts";
 import { modalOpen } from "../lib/focus.ts";
+import { PANE_DRAG_TYPE } from "../lib/split.ts";
 
 export interface ComposerProps {
   connected: boolean;
@@ -1143,6 +1144,8 @@ export function Composer({
         className={`composer-surface${dragging ? " is-dragging" : ""}`}
         data-compact={statusCompact ? "" : undefined}
         onDragEnter={(event) => {
+          // a pane dragged over the split view is App's to place, and its drop never reaches here
+          if (event.dataTransfer.types.includes(PANE_DRAG_TYPE)) return;
           event.preventDefault();
           setDragging(true);
         }}

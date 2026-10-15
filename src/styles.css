@@ -645,9 +645,9 @@ button {
   padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
-/* the pane area: one pane, or two side by side (lib/split.ts). Each half is a pane slot with its
-   own tab strip and terminal; slot b exists only while split, and the halves keep their slots
-   when they trade sides, drawn by order */
+/* the pane area: one pane, or several side by side and stacked (lib/split.ts). Each slot has its
+   own tab strip and terminal; split, every slot is placed at the share of the area its layout gives
+   it, and keeps its element (and its terminals) when it moves to another place */
 .pane-split {
   position: relative;
   display: flex;
@@ -664,16 +664,45 @@ button {
   min-height: 0;
 }
 
-.pane-slot[data-side="left"] {
-  order: 0;
+.pane-split.is-split > .pane-slot {
+  position: absolute;
+}
+
+.pane-slot.joins-right {
   border-right: var(--hairline) solid var(--border-strong);
 }
 
-.pane-slot[data-side="right"] {
-  order: 1;
+.pane-slot.joins-below {
+  border-bottom: var(--hairline) solid var(--border-strong);
 }
 
-/* a half's own bar: its pane's mark and title, its lens, and its close. The active half's bar
+/* a boundary between slots: a thin line to the eye, a wider band to the pointer */
+.pane-split-divider {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+
+.pane-split-divider[data-dir="row"] {
+  width: 7px;
+  transform: translateX(-50%);
+  cursor: col-resize;
+}
+
+.pane-split-divider[data-dir="column"] {
+  height: 7px;
+  transform: translateY(-50%);
+  cursor: row-resize;
+}
+
+.pane-split-divider:hover,
+.pane-split-divider:active,
+.pane-split-divider:focus-visible {
+  background: var(--accent-tint);
+  outline: none;
+}
+
+/* a slot's own bar: its pane's mark and title, its lens, and its close. The active slot's bar
    carries the accent, as the pane the header, the palette and the shortcuts act on */
 .pane-slot-bar {
   display: flex;
@@ -716,7 +745,7 @@ button {
   height: 14px;
 }
 
-/* the inactive half is a step quieter, so the one keys go to reads at a glance */
+/* the inactive slots are a step quieter, so the one keys go to reads at a glance */
 .pane-slot.is-inactive .terminal-host {
   opacity: 0.88;
 }

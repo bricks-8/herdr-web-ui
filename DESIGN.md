@@ -765,6 +765,21 @@ One set for both themes: the card is island black wherever it shows.
   A right-click on a pane always opens its menu.
   Native app shortcuts stay Mod+Shift in the browser, so Ctrl+key continues to reach the PTY.
 
+### Split view
+- Tabs from any workspace or PC are placed side by side and stacked (`lib/split.ts`), over
+  herdr's own layouts, which they never change. A sidebar row, or a tab dragged down out of its
+  strip, is dropped on a slot: on an edge band (a quarter of the slot) it opens beside the slot on
+  that side, in the slot's middle it opens in its place. One pane is split on the half the pointer
+  is over, steady within 12px of the middle, or above and below in a band along its top and bottom.
+  The guide outlines every slot and moves one `--accent` highlight to the place the pane would take.
+- The layout is a binary tree of row and column splits, at most six slots. Every slot is drawn in
+  one container by a stable id at the rectangle the tree gives it, so a slot that moves keeps its
+  terminals. Neighbouring slots share a `--border-strong` hairline; a boundary has a 7px hit
+  region, a 15 to 85% limit and a keyboard separator that takes arrow keys in 5% steps.
+- A slot's bar names its pane and PC and carries its lens and Remove from the split. The active
+  slot's bar has the accent: a press or a Tab into another slot makes it active. A tab is never
+  drawn in two slots. Up to 768px only the active slot is drawn; the split is kept for a wider window.
+
 ### Worktree dialog (`.worktree-modal`)
 - From a workspace row's menu, as herdr's prefix+shift+g: **New worktree** asks for the branch
   (required), where to start from (HEAD when empty, ignored for a branch that exists) and a
